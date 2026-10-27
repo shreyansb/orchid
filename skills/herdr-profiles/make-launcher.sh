@@ -14,6 +14,18 @@ case "$KIND" in
   codex)  VAR=CODEX_HOME; BIN=codex ;;
   *) echo "kind must be claude or codex" >&2; exit 2 ;;
 esac
+# Expand a leading ~ or $HOME ourselves. A quoted ~ in the launcher would stay a literal "~".
+case "$DIR" in
+  "~") DIR="$HOME" ;;
+  "~/"*) DIR="$HOME/${DIR#"~/"}" ;;
+  '$HOME') DIR="$HOME" ;;
+  '$HOME/'*) DIR="$HOME/${DIR#'$HOME/'}" ;;
+esac
+case "$DIR" in
+  /*) ;;
+  *) echo "config dir must be a full path, or start with ~/ or \$HOME/" >&2; exit 2 ;;
+esac
+case "$DIR" in *'"'*|*'$'*|*'`'*) echo "config dir must not contain \" \$ or backtick" >&2; exit 2 ;; esac
 case "$NAME" in *[!a-zA-Z0-9_-]*|"") echo "command name: letters, digits, - and _ only" >&2; exit 2 ;; esac
 command -v "$NAME" >/dev/null 2>&1 && { echo "refusing: a command named $NAME already exists on PATH" >&2; exit 1; }
 

@@ -15,7 +15,7 @@ These rules are for the orchestrator agent (named in the orchid config, `orchid`
 
 ## Agents and profiles
 - Name every new agent `<space>-<purpose>`, using the full space name as the prefix, so its place is clear at a glance.
-- Each context maps to one profile in `profiles.md` (a login, a subscription, an agent kind). Start work for a context only under its profile. Create the pane with the profile's environment, for example `herdr pane split --env CLAUDE_CONFIG_DIR=<dir>` or `herdr tab create --env CODEX_HOME=<dir>`, then `herdr agent start <name> --kind <kind> --pane <id>`.
+- Each context maps to one profile in `profiles.md` (a login, a subscription, an agent kind). Start work for a context only under its profile. Create the pane with the profile's environment, for example `herdr pane split --env CLAUDE_CONFIG_DIR=<full-path>` or `herdr tab create --env CODEX_HOME=<full-path>` (full paths, no `~`), then `herdr agent start <name> --kind <kind> --pane <id>`.
 - Verify the login before you send work: run the verify command from `profiles.md` with the profile's environment on the machine where the agent runs, or ask the new agent to run it. Never start an agent for a mapped context with the default login.
 - Keep contexts apart. Never copy data between contexts without asking.
 - Unsure which space fits: ask one short question with a best guess.

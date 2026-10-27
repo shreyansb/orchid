@@ -11,7 +11,7 @@ Lets the person keep several logins side by side, and start work under the right
 ## Questions
 1. Which logins do they have? For each: a name, the kind (`claude` or `codex`), and which context it is for (for example work, personal).
 2. Which machines does each profile live on? Logins are per machine.
-3. Config folder per profile. Suggest `~/.claude-<name>` or `~/.codex-<name>`. Does an existing one already exist? If so, use it; do not move it.
+3. Config folder per profile. Suggest `$HOME/.claude-<name>` or `$HOME/.codex-<name>`; write full paths or `$HOME`, never a quoted `~`. Does an existing one already exist? If so, use it; do not move it.
 4. Do they want a launcher command per profile (a tiny script in `~/.local/bin`)?
 5. Other agent kinds (herdr can start many)? Only Claude Code and Codex have a verified per-login environment. For others, say it is unverified and ask whether to add a row anyway.
 

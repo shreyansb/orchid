@@ -31,9 +31,13 @@ Checked on a real machine with Claude Code and Codex CLI installed:
 3. It runs the verify command with the same environment variable (`claude auth status` or `codex login status`) on the machine where the agent runs, and checks the result before sending work. On a remote machine that means over SSH, or by asking the new agent to run it. The command shows the login the profile selects; it does not read the agent's own screen.
 4. For a remote machine, the pane and agent steps run with `herdr --machine <label> ...`. The profile's directory is on that machine.
 
+## Paths: use `$HOME` or a full path
+
+A `~` only expands when it is unquoted and at the start of a word. Inside quotes it stays a literal `~`, and the tool then looks for (or creates) a folder named `~`. So `profiles.md` and every command use `$HOME/.claude-<name>` or a full path. `make-launcher.sh` expands a leading `~` itself and writes the full path into the launcher. For `herdr ... --env KEY=VALUE`, give the full path: herdr is assumed to pass the value as given (not tested).
+
 ## Launchers
 
-A launcher is a two-line script so you can type one command: `CLAUDE_CONFIG_DIR=<dir> exec claude "$@"`. `skills/herdr-profiles/make-launcher.sh` writes it to `~/.local/bin/<name>`. It never edits shell startup files. If `~/.local/bin` is not on your PATH, add it yourself or use the full path.
+A launcher is a two-line script so you can type one command: `CLAUDE_CONFIG_DIR=<full-path> exec claude "$@"`. `skills/herdr-profiles/make-launcher.sh` writes it to `~/.local/bin/<name>`. It never edits shell startup files. If `~/.local/bin` is not on your PATH, add it yourself or use the full path.
 
 ## First sign-in
 
