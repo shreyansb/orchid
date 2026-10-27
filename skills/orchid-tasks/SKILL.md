@@ -22,7 +22,7 @@ Every script below is a dry run until you add `--apply`. Run it without `--apply
 1. Config: `<repo>/scripts/write-config.sh --home <home> --orchestrator <name> --label <label>`. It checks the three values (a placeholder such as `<machine-label>` is refused), shows a diff, and backs up an old config.
 2. Home folder: `<repo>/scripts/init-home.sh <home>`. The dry run lists every folder and file it would create. It makes `tasks/` and `done/` and copies `AGENTS.md`, `CLAUDE.md` (which contains `@AGENTS.md`), `board.md`, `journal.md`, `spaces.md` and `task-template.md`. An existing file is diffed and backed up first. Copy `templates/profiles.md` later if profiles are wanted (see `herdr-profiles`).
 3. Fill `<home>/spaces.md` with the spaces the person has, as a guess they can correct. Add the person's own rules to `<home>/AGENTS.md` if they want; it is their copy.
-4. **Start and name the orchestrator before anything else runs against herdr.** See "Start and restart" below. The watcher wakes only an agent with the exact configured name, and `herdr-agents --apply` (and the watcher) give unnamed agents a default name, which would also rename an unnamed orchestrator pane.
+4. **Start and name the orchestrator before anything else runs against herdr.** See "Start and restart" below. The watcher skips only an agent with the exact configured name, and `herdr-agents --apply` (and the watcher) give unnamed agents a default name, which would also rename an unnamed orchestrator pane.
 
 ## Start and restart
 The orchestrator is an ordinary agent in a herdr pane, started in the home folder.

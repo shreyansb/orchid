@@ -5,7 +5,7 @@ predates `tomllib`). Default path: ~/.config/orchid/config. Override with ORCHID
 
 Keys:
   home           folder that holds state: tasks, board, journal, profiles, spaces
-  orchestrator   herdr agent name of the orchestrator (the watcher wakes this agent)
+  orchestrator   herdr agent name of the orchestrator (the watcher skips this agent)
   machine_label  label of THIS machine, the same label other machines use for it
 """
 import os
@@ -50,6 +50,12 @@ def load(path=None):
 def state_dir():
     """Machine-local state (saved agent names, watcher log). Next to the config file."""
     return config_path().parent
+
+
+def wakes_path():
+    """The wake log: one line per wake, written by the watcher, tailed by the orchestrator.
+    Next to the config file, so it is the same path on macOS and Linux."""
+    return state_dir() / "wakes.log"
 
 
 def problems(cfg):

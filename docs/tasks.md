@@ -40,9 +40,9 @@ Only these front matter fields: `id`, `title`, `status`, `agents`, and the singl
 - It looks at tasks with `status: new` or `status: running`.
 - Each owner is `<machine-label>/<agent-name>`. The label is the saved herdr machine label (or this machine's `machine_label` from the config). The name is the live herdr agent name. Labels cannot contain "/".
 - A trailing ` # comment` on a field line is ignored.
-- A wrong label or name fails silently: no match, no wake. `orchid_watcher.py --check` lists each owner and says whether the agent was found.
+- A wrong label or name fails silently: no match, no wake line. `orchid_watcher.py --check` lists each owner and says whether the agent was found.
 
-## When it wakes the orchestrator
+## When the watcher writes a wake
 
 For an agent that owns an open task:
 
@@ -50,9 +50,11 @@ For an agent that owns an open task:
 - it sits in `unknown` for 30 seconds (it may be showing a dialog);
 - it shows `working` but its screen text has not changed for 10 minutes.
 
-The wake is held until the keyboard and mouse have been idle 20 seconds (macOS), and for 60 seconds after the computer wakes from sleep. The wake message names the agent, its state and the task. It never contains agent output; the screen text is hashed to detect a frozen screen and is neither stored nor sent.
+The watcher writes one line to `wakes.log` (in the folder of the orchid config, `~/.config/orchid/` by default, the same path on macOS and Linux). It never types into any agent's input box, never waits for the keyboard, and sends no notification. It waits 60 seconds after the computer wakes from sleep. The line names the agent, its state and the task. It never contains agent output; the screen text is hashed to detect a frozen screen and is neither stored nor sent.
 
-No wake for agents without an open task, for the orchestrator itself, or when no agent has the orchestrator's name.
+The orchestrator arms a Monitor on the file: `tail -n 0 -F <path>/wakes.log`. A Monitor lasts 30 minutes at most, so the orchestrator arms it again when it ends. At session start it also reads the file for wakes it missed. The orchestrator sends a `PushNotification` only when it has a message for the user. Claude Code skips the notification when the user is at the terminal.
+
+No line for agents without an open task or for the orchestrator itself. No agent sees the line unless a Monitor reads the file.
 
 ## Many machines, many agents
 

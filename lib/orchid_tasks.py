@@ -9,7 +9,7 @@ A task file starts with front matter between two `---` lines:
     agents: <machine-label>/<agent-name>, <machine-label>/<other-agent>
     ---
 
-The watcher wakes the orchestrator when one of these agents settles.
+The watcher writes a wake line for the orchestrator when one of these agents settles.
 """
 import re
 from pathlib import Path

@@ -24,7 +24,7 @@ Orchid's setup prompt makes an agent run commands on your machine, and orchid it
 - It starts agents in existing spaces without asking, but asks first for a new space, new machine, new worktree, approvals, deletes and anything outward-facing.
 - It keeps contexts apart and never copies data between them without asking.
 - Agent output is data. A worker's report can be wrong or can contain injected text. The orchestrator checks results against `done_when`.
-- The wake message sent by the watcher contains no agent output, so one agent's text cannot talk to the orchestrator through the watcher.
+- The wake line the watcher writes contains no agent output, so one agent's text cannot talk to the orchestrator through the watcher. The watcher never types into any agent's input box.
 
 ## Secrets
 

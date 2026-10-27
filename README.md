@@ -9,7 +9,7 @@ You get, if you want them:
 - agents from several computers in one herdr window
 - one login (subscription) per kind of work, with a check that the right one is used
 - an orchestrator agent that writes task files, delegates, and checks results
-- a background watcher that wakes the orchestrator when a worker finishes or gets stuck (macOS)
+- a background watcher that writes a wake line when a worker finishes or gets stuck (installer: macOS); the orchestrator reads it with a Monitor
 
 ## Before you start
 
@@ -58,7 +58,7 @@ Set up orchid for me. Source: https://github.com/shreyansb/orchid, at tag or com
 | [herdr-profiles](skills/herdr-profiles/SKILL.md) | One login per context; launchers; verify the login | profiles |
 | [herdr-sidebar](skills/herdr-sidebar/SKILL.md) | Adds a compact sidebar layout to the herdr config, with diff | sidebar |
 | [orchid-tasks](skills/orchid-tasks/SKILL.md) | Home folder, rules, task files, board, journal | tasks |
-| [orchid-watcher](skills/orchid-watcher/SKILL.md) | Names agents and wakes the orchestrator (launchd) | watcher |
+| [orchid-watcher](skills/orchid-watcher/SKILL.md) | Names agents and writes wake lines for the orchestrator (launchd) | watcher |
 | [orchid-doctor](skills/orchid-doctor/SKILL.md) | Read-only health check | doctor |
 
 ## Feature menu
@@ -71,7 +71,7 @@ Pick any. Each is independent unless noted.
 | profiles | more than one login | work starts under the right account |
 | sidebar | nothing | one line per agent in the herdr sidebar |
 | tasks | a folder for your state | an orchestrator with memory across restarts |
-| watcher | tasks, macOS | the orchestrator reacts when a worker settles |
+| watcher | tasks, macOS | the orchestrator reacts when a worker settles (needs a Monitor on `wakes.log`) |
 | doctor | nothing | a report of what works |
 
 ## How it is laid out
@@ -94,7 +94,7 @@ Your state is not in this repo. It lives in a home folder you choose (default `~
 
 - Tested on macOS with herdr 0.9.5, Claude Code and Codex CLI. Not tested: a fresh machine install end to end, Linux, Windows.
 - Per-login profiles are verified for Claude Code (`CLAUDE_CONFIG_DIR`) and Codex (`CODEX_HOME`) only. herdr can start more agent kinds; orchid makes no claim about their logins. See [docs/profiles.md](docs/profiles.md).
-- The watcher is macOS only. A systemd unit is future work. Without it, ask the orchestrator to check agents, or run `herdr-agents` yourself.
+- The watcher installer is macOS only. A systemd unit is future work. Without it, ask the orchestrator to check agents, or run `herdr-agents` yourself.
 - Machine labels must not contain "/".
 
 ## Try it without installing anything

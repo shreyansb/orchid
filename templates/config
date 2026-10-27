@@ -4,7 +4,7 @@
 # Folder that holds your state: tasks, board, journal, profiles, spaces.
 home=~/orchid-home
 
-# herdr agent name of the orchestrator. The watcher wakes the agent with this name.
+# herdr agent name of the orchestrator. The watcher skips this agent and writes wakes for it.
 orchestrator=orchid
 
 # Name of THIS machine. Other machines save this computer in herdr under the same label.

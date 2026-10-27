@@ -467,6 +467,11 @@ class HerdrAgentsReadOnlyTests(unittest.TestCase):
         src = (REPO / "skills/orchid-watcher/orchid_watcher.py").read_text()
         self.assertIn('"--quiet", "--apply"', src)
 
+    def test_watcher_never_prompts_or_reads_the_keyboard(self):
+        src = (REPO / "skills/orchid-watcher/orchid_watcher.py").read_text()
+        for banned in ('"prompt"', "ioreg", "HIDIdleTime", "IDLE_SECONDS", "osascript", "PushNotification"):
+            self.assertNotIn(banned, src)
+
     def test_tests_use_the_stub_not_the_real_herdr(self):
         env_path = STUB_DIR + os.pathsep + "/usr/bin:/bin"
         self.assertEqual(shutil.which("herdr", path=env_path), os.path.join(STUB_DIR, "herdr"))
@@ -511,6 +516,77 @@ class ConfigMissingAgreementTests(unittest.TestCase):
             self.assertIn("machine_label: testbox", w.stdout)
             self.assertNotIn("FAIL", k.stdout)
 
+
+
+class WatcherWakeTests(unittest.TestCase):
+    """A wake writes one line to wakes.log and never calls `herdr agent prompt`."""
+
+    def load_watcher(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("orchid_watcher_under_test",
+                                                      REPO / "skills/orchid-watcher/orchid_watcher.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def poll(self, d, statuses):
+        """Run poll_once once per status in `statuses` with a fake herdr. Returns (calls, wakes)."""
+        home = Path(d) / "home"
+        (home / "tasks").mkdir(parents=True)
+        (home / "tasks" / "T001.md").write_text(
+            "---\nid: T001\ntitle: Test task\nstatus: running\nagents: laptop/worker\n---\n")
+        cfg_file = write_config(d, label="laptop")
+        old = os.environ.get("ORCHID_CONFIG")
+        os.environ["ORCHID_CONFIG"] = str(cfg_file)
+        try:
+            w = self.load_watcher()
+            calls = []
+            current = {}
+
+            def fake_json(*args, machine=None):
+                calls.append(" ".join(args))
+                return {"result": {"agents": [{"name": "worker", "agent_status": current["s"], "completion_seq": 0}]}}
+
+            w.herdr_json = fake_json
+            w.targets = lambda label: [(label, None)]
+            cfg = orchid_config.load(cfg_file)
+            seen, pending, down = {}, {}, set()
+            extra = {"unknown": {}, "screen": {}, "flagged": set()}
+            for s in statuses:
+                current["s"] = s
+                w.poll_once(cfg, seen, pending, down, extra)
+            wakes = orchid_config.wakes_path()
+            return calls, (wakes.read_text().splitlines() if wakes.exists() else []), wakes
+        finally:
+            if old is None:
+                os.environ.pop("ORCHID_CONFIG", None)
+            else:
+                os.environ["ORCHID_CONFIG"] = old
+
+    def test_wake_writes_one_line_and_does_not_prompt(self):
+        with tempfile.TemporaryDirectory() as d:
+            calls, lines, wakes = self.poll(d, ["working", "idle", "idle"])
+            self.assertEqual(wakes.parent, Path(d) / "cfg")  # next to the config
+            self.assertEqual(len(lines), 1, lines)
+            self.assertIn("agent worker on laptop is now idle (task T001: Test task)", lines[0])
+            self.assertEqual([c for c in calls if "prompt" in c], [])
+            self.assertEqual(set(c.split()[0] for c in calls), {"agent"})
+
+    def test_no_wake_line_for_an_agent_that_never_worked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _, lines, _ = self.poll(d, ["idle", "idle"])
+            self.assertEqual(lines, [])
+
+    def test_wakes_path_is_next_to_the_config(self):
+        old = os.environ.get("ORCHID_CONFIG")
+        os.environ["ORCHID_CONFIG"] = "/x/y/config"
+        try:
+            self.assertEqual(orchid_config.wakes_path(), Path("/x/y/wakes.log"))
+        finally:
+            if old is None:
+                os.environ.pop("ORCHID_CONFIG", None)
+            else:
+                os.environ["ORCHID_CONFIG"] = old
 
 if __name__ == "__main__":
     unittest.main()

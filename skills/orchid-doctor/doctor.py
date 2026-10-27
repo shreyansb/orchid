@@ -117,6 +117,8 @@ def check_watcher(cfg):
     add("OK" if running else "WARN", "watcher job", "running" if running else "loaded but not running")
     log = orchid_config.state_dir() / "watcher.log"
     add("OK" if log.exists() else "WARN", "watcher log", str(log))
+    wakes = orchid_config.wakes_path()
+    add("OK" if wakes.exists() else "SKIP", "wakes.log", str(wakes) if wakes.exists() else "not written yet (no wake so far)")
 
 
 def check_skills():

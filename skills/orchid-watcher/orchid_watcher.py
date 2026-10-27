@@ -6,18 +6,18 @@
 2. Wake-up: every POLL_SECONDS it lists agents on this machine and on every enabled saved
    machine. When an agent that owns an open task (<home>/tasks) stops working (idle, done, or
    blocked), sits in `unknown` for 30 s, or works with an unchanged screen for 10 min, it
-   prompts the orchestrator agent, once the user has been idle for 20 s. The prompt names the
-   agent, its state, and the task only. It never includes agent output.
+   appends one line to wakes.log (next to the config). The orchestrator tails that file with
+   a Monitor. The watcher never types into any agent's input box and sends no notification.
+   The line names the agent, its state, and the task only. It never includes agent output.
 
 The home folder, orchestrator name and machine label come from the orchid config
-(~/.config/orchid/config). Nothing is hard-coded.
+(~/.config/orchid/config). Wakes go to wakes.log in the same folder. Nothing is hard-coded.
 
     orchid_watcher.py            run the daemon
     orchid_watcher.py --check    print the config and the open tasks, check each owner, exit
 """
 import json
 import os
-import re
 import socket
 import subprocess
 import sys
@@ -38,7 +38,6 @@ POLL_SECONDS = 10
 SETTLED = {"idle", "done", "blocked"}
 UNKNOWN_SECONDS = 30      # an agent in an unrecognized state this long may sit at a dialog
 WAKE_GRACE_SECONDS = 60   # pause after the computer wakes, so links to other machines return
-IDLE_SECONDS = 20         # hold a wake until keyboard and mouse have been idle this long
 STALL_SECONDS = 600       # working, but the screen has not changed this long
 
 
@@ -126,16 +125,13 @@ def note_activity(key, machine, status, extra, pending):
         pending[key] = "stalled"
 
 
-def user_idle_seconds():
-    """Seconds since the last key or mouse input. macOS only (ioreg). Returns a large number
-    where it cannot be read, so on other systems no wake is held back."""
-    try:
-        out = subprocess.run(["ioreg", "-c", "IOHIDSystem"], capture_output=True, text=True,
-                             timeout=10).stdout
-        m = re.search(r'"HIDIdleTime" = (\d+)', out)
-        return int(m.group(1)) / 1e9 if m else 1e9
-    except (OSError, subprocess.TimeoutExpired):
-        return 1e9
+def write_wake(msg):
+    """Append one wake line to wakes.log. This is the only way the watcher reaches the
+    orchestrator: it never types into an agent and never sends a notification."""
+    path = orchid_config.wakes_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as f:
+        f.write(" ".join(msg.split()) + "\n")
 
 
 def poll_once(cfg, seen, pending, down, extra):
@@ -164,8 +160,6 @@ def poll_once(cfg, seen, pending, down, extra):
                 pending.pop(key, None)
             if key in tasks:
                 note_activity(key, machine, status, extra, pending)
-    if pending and user_idle_seconds() < IDLE_SECONDS:
-        return  # the user may be typing; a wake now would land in their half-typed message
     for key, status in list(pending.items()):
         if key not in tasks:
             del pending[key]
@@ -178,11 +172,11 @@ def poll_once(cfg, seen, pending, down, extra):
                "result against the task's done_when, update the task file and board, then tell "
                "the user what matters." % (key[1], key[0], what, tid, title))
         try:
-            herdr_json("agent", "prompt", orchestrator, msg)
-            log("wake: sent for %s (%s, %s)" % (key[1], status, tid))
+            write_wake(msg)
+            log("wake: written for %s (%s, %s)" % (key[1], status, tid))
             del pending[key]
         except Exception as e:
-            log("wake: could not prompt %s, will retry: %s" % (orchestrator, e))
+            log("wake: could not write %s, will retry: %s" % (orchid_config.wakes_path(), e))
 
 
 def poll_loop(cfg):
@@ -217,6 +211,7 @@ def check(cfg):
     print("home:          %s" % cfg["home"])
     print("orchestrator:  %s" % cfg["orchestrator"])
     print("machine_label: %s" % cfg["machine_label"])
+    print("wakes.log:     %s" % orchid_config.wakes_path())
     tasks = orchid_tasks.open_tasks(cfg["home"] / "tasks")
     print("open tasks with owners: %d" % len(tasks))
     live = {}
