@@ -6,9 +6,12 @@ description: Install the background watcher that names new agents and wakes the 
 # orchid-watcher
 
 ## What it does
-A small Python script run by launchd. It (1) names new agents on this machine, and (2) polls this machine and every saved machine, and prompts the orchestrator when an agent that owns an open task settles, sits in `unknown`, or freezes. Rules and timings: `docs/tasks.md`. It needs the config and a home folder (`orchid-tasks`).
+A small Python script run by launchd. It (1) names new agents on this machine, and (2) polls this machine and every saved machine, and prompts the orchestrator when an agent that owns an open task settles, sits in `unknown`, or freezes. Rules and timings: `docs/tasks.md`. It needs a valid config and a home folder (`orchid-tasks`); with no config, or an invalid one, it refuses to start. It runs `herdr_agents.py --apply` to name new agents.
 
 macOS only. On Linux the other skills work and this one does not; a systemd unit is future work.
+
+## Before you start
+The orchestrator agent must already be running and named exactly as in the config (see `orchid-tasks`, "Start and restart"). The watcher names unnamed agents, and it would also name an unnamed orchestrator pane `<space>-p<N>`. Without the right name it can never wake the orchestrator.
 
 ## Questions
 1. Is the orchestrator on this machine? One watcher is enough for all machines; install it on the orchestrator's machine only.
