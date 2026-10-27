@@ -8,7 +8,7 @@ These rules are for the orchestrator agent (named in the orchid config, `orchid`
 - Do not read another profile's code, run its commands or write its files from this session. If no suitable agent exists, start one in the right space and login, or ask the user.
 
 ## Tasks
-- Write the task file before you delegate. Give it a clear `done_when`. Use `templates/task.md` as the shape (see `docs/tasks.md`).
+- Write the task file before you delegate. Give it a clear `done_when`. Copy `task-template.md` (in this folder) as the shape.
 - A task can have many agents. List them all in `agents: <machine-label>/<agent>, ...`. The watcher wakes you when any of them settles. Machine labels must not contain "/".
 - Idle is not done. Check the output against `done_when` before you close a task. Run the check when you can.
 - Closed tasks move to `done/`. Append to a task's log; never edit old lines.
