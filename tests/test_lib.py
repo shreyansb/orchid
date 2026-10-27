@@ -3,8 +3,10 @@
 Every script test runs with HOME and the skills folder pointed at a temporary directory, so
 nothing outside it is touched.
 """
+import atexit
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,8 +19,64 @@ import orchid_config  # noqa: E402
 import orchid_tasks  # noqa: E402
 
 
+# A fake `herdr` first on PATH for every script a test runs, so no test can reach the real
+# herdr server (HOME does not isolate its socket). Calls are logged to HERDR_STUB_LOG.
+STUB_DIR = tempfile.mkdtemp(prefix="orchid-stub-")
+STUB_LOG = os.path.join(STUB_DIR, "calls.log")
+STUB = """import json, os, sys
+args = sys.argv[1:]
+with open(os.environ["HERDR_STUB_LOG"], "a") as f:
+    f.write(" ".join(args) + "\\n")
+named = {"result": {"agents": [
+    {"pane_id": "w1:p1", "workspace_id": "w1", "name": "orchid", "agent": "claude",
+     "agent_status": "idle", "cwd": "/tmp", "terminal_title_stripped": "", "completion_seq": 0},
+    {"pane_id": "w1:p2", "workspace_id": "w1", "agent": "claude",
+     "agent_status": "idle", "cwd": "/tmp", "terminal_title_stripped": "", "completion_seq": 0}]}}
+if args[:1] == ["--version"]:
+    print("herdr 0.9.5")
+elif args[:2] == ["agent", "list"]:
+    print(json.dumps(named))
+elif args[:2] == ["workspace", "list"]:
+    print(json.dumps({"result": {"workspaces": [{"workspace_id": "w1", "label": "home"}]}}))
+elif args[:2] in (["machine", "list"], ["machine", "status"]):
+    print("[]")
+elif args[:2] == ["agent", "rename"]:
+    print("{}")
+else:
+    sys.stderr.write("stub herdr: unsupported: " + " ".join(args) + "\\n")
+    sys.exit(1)
+"""
+# The launcher is a /bin/sh script, because the path of sys.executable may contain a space,
+# which a shebang line cannot hold.
+with open(os.path.join(STUB_DIR, "herdr_stub.py"), "w") as _f:
+    _f.write(STUB)
+_stub_path = os.path.join(STUB_DIR, "herdr")
+with open(_stub_path, "w") as _f:
+    _f.write('#!/bin/sh\nexec "%s" "%s" "$@"\n' % (sys.executable, os.path.join(STUB_DIR, "herdr_stub.py")))
+os.chmod(_stub_path, 0o755)
+atexit.register(shutil.rmtree, STUB_DIR, True)
+
+
+def stub_calls():
+    try:
+        with open(STUB_LOG) as f:
+            return f.read().splitlines()
+    except OSError:
+        return []
+
+
+def reset_stub_log():
+    try:
+        os.remove(STUB_LOG)
+    except OSError:
+        pass
+
+
 def sh(args, env=None, cwd=None):
     e = dict(os.environ)
+    e["PATH"] = STUB_DIR + os.pathsep + "/usr/bin:/bin:/usr/sbin:/sbin"
+    e["HERDR_STUB_LOG"] = STUB_LOG
+    e["HERDR_SOCKET_PATH"] = "/nonexistent/herdr.sock"
     e.update(env or {})
     return subprocess.run(args, capture_output=True, text=True, env=e, cwd=cwd)
 
@@ -42,6 +100,38 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg["orchestrator"], "boss")
         self.assertEqual(cfg["machine_label"], "box")
         self.assertEqual(cfg["home"], Path(d) / "h")
+
+
+class ConfigValidationTests(unittest.TestCase):
+    def cfg(self, **kw):
+        base = {"home": Path("/x"), "home_text": "/x", "orchestrator": "orchid", "machine_label": "laptop"}
+        base.update(kw)
+        return base
+
+    def test_good_labels(self):
+        for label in ("laptop", "my box", "Box-2", "local"):
+            self.assertEqual(orchid_config.problems(self.cfg(machine_label=label)), [], label)
+
+    def test_bad_labels(self):
+        for label in ("", "   ", "<machine-label>", "a/b", "a>b", "<x"):
+            self.assertTrue(orchid_config.problems(self.cfg(machine_label=label)), repr(label))
+
+    def test_orchestrator_name_must_be_a_herdr_name(self):
+        self.assertTrue(orchid_config.problems(self.cfg(orchestrator="Orchid")))
+        self.assertTrue(orchid_config.problems(self.cfg(orchestrator="a b")))
+        self.assertEqual(orchid_config.problems(self.cfg(orchestrator="boss_2")), [])
+
+    def test_status_states(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(orchid_config.status(Path(d) / "none")[0], "missing")
+            self.assertTrue(orchid_config.status(Path(d) / "none")[1].startswith("config not found"))
+            p = Path(d) / "c"
+            p.write_text("machine_label=<machine-label>\n")
+            self.assertEqual(orchid_config.status(p)[0], "invalid")
+            p.write_text("machine_label=\n")
+            self.assertEqual(orchid_config.status(p)[0], "invalid")
+            p.write_text("machine_label=laptop\n")
+            self.assertEqual(orchid_config.status(p)[0], "ok")
 
 
 class TaskParserTests(unittest.TestCase):
@@ -198,12 +288,107 @@ class LauncherTests(unittest.TestCase):
             self.assertTrue(os.access(str(target), os.X_OK))
             self.assertEqual(sh(args + ["--apply"], env).returncode, 1)
 
+    def test_tilde_and_home_are_expanded_not_written_literally(self):
+        with tempfile.TemporaryDirectory() as d:
+            for given in ("~/.claude-work", "$HOME/.claude-work"):
+                name = "t" + str(abs(hash(given)) % 100000)
+                r = sh(["sh", self.script, name, "claude", given, "--apply"], {"HOME": d}, cwd=d)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                body = (Path(d) / ".local/bin" / name).read_text()
+                self.assertIn('CLAUDE_CONFIG_DIR="%s/.claude-work"' % d, body)
+                self.assertNotIn("~", body)
+            self.assertFalse((Path(d) / "~").exists(), "must not create a folder named ~")
+            self.assertTrue((Path(d) / ".claude-work").is_dir())
+
+    def test_relative_and_unsafe_dirs_are_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            for bad in ("relative/dir", "/tmp/a$b", '/tmp/a"b'):
+                r = sh(["sh", self.script, "t-bad", "claude", bad], {"HOME": d})
+                self.assertEqual(r.returncode, 2, bad)
+
     def test_codex_uses_codex_home_and_bad_name(self):
         with tempfile.TemporaryDirectory() as d:
             r = sh(["sh", self.script, "t-codex", "codex", str(Path(d) / "x")], {"HOME": d})
             self.assertIn("CODEX_HOME=", r.stdout)
             r = sh(["sh", self.script, "bad name", "claude", d], {"HOME": d})
             self.assertEqual(r.returncode, 2)
+
+
+class WriteConfigTests(unittest.TestCase):
+    script = str(REPO / "scripts/write-config.sh")
+
+    def run_wc(self, d, label, *extra, orch="orchid"):
+        dest = str(Path(d) / "cfg/config")
+        return sh(["sh", self.script, "--home", "~/orchid-home", "--orchestrator", orch,
+                   "--label", label, "--config", dest] + list(extra), {"HOME": d}), Path(dest)
+
+    def test_rejects_placeholder_empty_slash_and_bad_orchestrator(self):
+        with tempfile.TemporaryDirectory() as d:
+            for label in ("<machine-label>", "a/b", "x>"):
+                r, dest = self.run_wc(d, label, "--apply")
+                self.assertEqual(r.returncode, 2, label)
+                self.assertFalse(dest.exists())
+            r, dest = self.run_wc(d, "", "--apply")
+            self.assertEqual(r.returncode, 2)
+            r, dest = self.run_wc(d, "laptop", "--apply", orch="Bad Name")
+            self.assertEqual(r.returncode, 2)
+            self.assertFalse(dest.exists())
+
+    def test_dry_run_then_apply_then_backup_on_change(self):
+        with tempfile.TemporaryDirectory() as d:
+            r, dest = self.run_wc(d, "laptop")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertFalse(dest.exists())
+            self.assertIn("Dry run", r.stdout)
+            self.run_wc(d, "laptop", "--apply")
+            self.assertIn("machine_label=laptop", dest.read_text())
+            self.assertEqual(orchid_config.status(dest)[0], "ok")
+            self.run_wc(d, "desktop", "--apply")
+            self.assertIn("machine_label=desktop", dest.read_text())
+            self.assertEqual(len(list(dest.parent.glob("config.orchid-bak-*"))), 1)
+
+
+class InitHomeTests(unittest.TestCase):
+    script = str(REPO / "scripts/init-home.sh")
+
+    def test_dry_run_creates_nothing_apply_creates_all_and_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d) / "h"
+            r = sh(["sh", self.script, str(home)], {"HOME": d})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertFalse(home.exists(), "dry run must not create the folder")
+            self.assertIn("would: mkdir -p %s/tasks" % home, r.stdout)
+            self.assertIn("Dry run", r.stdout)
+            r = sh(["sh", self.script, str(home), "--apply"], {"HOME": d})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            for name in ("AGENTS.md", "CLAUDE.md", "board.md", "journal.md", "spaces.md", "task-template.md"):
+                self.assertTrue((home / name).is_file(), name)
+            self.assertTrue((home / "tasks").is_dir() and (home / "done").is_dir())
+            self.assertIn("@AGENTS.md", (home / "CLAUDE.md").read_text())
+            again = sh(["sh", self.script, str(home), "--apply"], {"HOME": d})
+            self.assertIn("unchanged", again.stdout)
+            self.assertFalse(list(home.glob("*.orchid-bak-*")))
+
+    def test_existing_file_is_backed_up_not_lost(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d) / "h"
+            home.mkdir()
+            (home / "AGENTS.md").write_text("my own rules\n")
+            sh(["sh", self.script, str(home), "--apply"], {"HOME": d})
+            baks = list(home.glob("AGENTS.md.orchid-bak-*"))
+            self.assertEqual(len(baks), 1)
+            self.assertEqual(baks[0].read_text(), "my own rules\n")
+
+    def test_refuses_a_home_inside_the_repo_and_relative_paths(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(sh(["sh", self.script, str(REPO / "mine")], {"HOME": d}).returncode, 1)
+            self.assertEqual(sh(["sh", self.script, "relative/h"], {"HOME": d}).returncode, 2)
+
+    def test_tilde_home_expands(self):
+        with tempfile.TemporaryDirectory() as d:
+            sh(["sh", self.script, "~/orchid-home", "--apply"], {"HOME": d}, cwd=d)
+            self.assertTrue((Path(d) / "orchid-home/AGENTS.md").is_file())
+            self.assertFalse((Path(d) / "~").exists())
 
 
 @unittest.skipUnless(platform.system() == "Darwin", "watcher installer is macOS only")
@@ -229,6 +414,102 @@ class WatcherInstallDryRun(unittest.TestCase):
             r = sh(["sh", self.script, "--uninstall"], {"HOME": d})
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertIn("Nothing to remove", r.stdout)
+
+
+def write_config(d, label="testbox", orchestrator="orchid"):
+    cfg = Path(d) / "cfg" / "config"
+    cfg.parent.mkdir(exist_ok=True)
+    cfg.write_text("home=%s/home\norchestrator=%s\nmachine_label=%s\n" % (d, orchestrator, label))
+    return cfg
+
+
+class HerdrAgentsReadOnlyTests(unittest.TestCase):
+    script = str(REPO / "skills/herdr-agents/herdr_agents.py")
+
+    def run_agents(self, d, *args):
+        cfg = write_config(d)
+        reset_stub_log()
+        r = sh([sys.executable, "-I", self.script, "--local"] + list(args),
+               {"ORCHID_CONFIG": str(cfg), "HOME": d})
+        return r, cfg
+
+    def test_default_run_renames_nothing_and_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            r, cfg = self.run_agents(d)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertFalse([c for c in stub_calls() if "rename" in c], stub_calls())
+            self.assertFalse((cfg.parent / "names.json").exists())
+            self.assertIn("home-p2*", r.stdout)
+            self.assertIn("Nothing was renamed", r.stdout)
+
+    def test_apply_renames_and_saves(self):
+        with tempfile.TemporaryDirectory() as d:
+            r, cfg = self.run_agents(d, "--apply")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual([c for c in stub_calls() if "rename" in c], ["agent rename w1:p2 home-p2"])
+            self.assertIn("home-p2", (cfg.parent / "names.json").read_text())
+
+    def test_json_says_whether_applied(self):
+        with tempfile.TemporaryDirectory() as d:
+            r, _ = self.run_agents(d, "--json")
+            self.assertIn('"applied": false', r.stdout)
+
+    def test_invalid_config_stops_before_touching_herdr(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = write_config(d, label="<machine-label>")
+            reset_stub_log()
+            r = sh([sys.executable, "-I", self.script, "--local", "--apply"], {"ORCHID_CONFIG": str(cfg), "HOME": d})
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("config invalid", r.stderr)
+            self.assertEqual(stub_calls(), [])
+
+    def test_watcher_names_with_apply(self):
+        src = (REPO / "skills/orchid-watcher/orchid_watcher.py").read_text()
+        self.assertIn('"--quiet", "--apply"', src)
+
+    def test_tests_use_the_stub_not_the_real_herdr(self):
+        env_path = STUB_DIR + os.pathsep + "/usr/bin:/bin"
+        self.assertEqual(shutil.which("herdr", path=env_path), os.path.join(STUB_DIR, "herdr"))
+
+
+class ConfigMissingAgreementTests(unittest.TestCase):
+    """The watcher check and the doctor must describe a missing or broken config alike."""
+    watcher = str(REPO / "skills/orchid-watcher/orchid_watcher.py")
+    doctor = str(REPO / "skills/orchid-doctor/doctor.py")
+
+    def run_both(self, cfg_path, d):
+        env = {"ORCHID_CONFIG": str(cfg_path), "HOME": d}
+        w = sh([sys.executable, "-I", self.watcher, "--check"], env)
+        k = sh([sys.executable, "-I", self.doctor], env)
+        return w, k
+
+    def test_missing_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            w, k = self.run_both(Path(d) / "nope", d)
+            self.assertEqual(w.returncode, 1)
+            self.assertIn("config not found", w.stdout)
+            self.assertIn("config not found", k.stdout)
+            self.assertEqual(k.returncode, 0)  # a missing config is a WARN for the doctor
+            self.assertNotIn("machine_label: local", w.stdout)
+
+    def test_invalid_label_fails_both(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = write_config(d, label="<machine-label>")
+            w, k = self.run_both(cfg, d)
+            self.assertEqual(w.returncode, 1)
+            self.assertIn("config invalid", w.stdout)
+            self.assertEqual(k.returncode, 1)
+            self.assertIn("FAIL", k.stdout)
+            self.assertIn("config invalid", k.stdout)
+
+    def test_good_config_passes_the_check(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = write_config(d)
+            (Path(d) / "home").mkdir()
+            w, k = self.run_both(cfg, d)
+            self.assertEqual(w.returncode, 0, w.stdout + w.stderr)
+            self.assertIn("machine_label: testbox", w.stdout)
+            self.assertNotIn("FAIL", k.stdout)
 
 
 if __name__ == "__main__":

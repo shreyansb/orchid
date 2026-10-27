@@ -105,7 +105,47 @@ def task_files():
         ok("task template and example parse")
 
 
+def readme_prompt():
+    """The paste prompt names the files that matter, links only chosen skills, and every file it
+    names exists."""
+    text = (REPO / "README.md").read_text()
+    m = re.search(r"```\nSet up orchid for me\..*?\n```", text, re.S)
+    if not m:
+        fail("README paste prompt not found")
+        return
+    prompt = m.group(0)
+    if "scripts they call" in prompt:
+        fail("prompt step 2 still says to read every script")
+    for needle in ("link-skill.sh", "dry run", "--apply", "only the skills I", "name the", "once"):
+        if needle.lower() not in prompt.lower().replace("\n", " ").replace("  ", " "):
+            fail("prompt does not mention %r" % needle)
+    paths = set(re.findall(r"(?:scripts|docs)/[A-Za-z0-9_./-]+\.(?:sh|md)", prompt))
+    paths.add("README.md")
+    missing = [p for p in sorted(paths) if not (REPO / p).exists()]
+    if missing:
+        fail("prompt names files that do not exist: %s" % missing)
+    else:
+        ok("README prompt: %d named files exist, link-skill step present" % len(paths))
+
+
+def no_stale_instructions():
+    """Docs must not tell people to do things the code now refuses or does differently."""
+    bad = [("templates/config", None)]
+    cfg = (REPO / "templates/config").read_text()
+    if "machine_label=<machine-label>" not in cfg:
+        fail("templates/config no longer shows the placeholder; write-config.sh expects to replace it")
+    for md in REPO.rglob("*.md"):
+        if ".git" in md.parts:
+            continue
+        t = md.read_text()
+        if re.search(r"CLAUDE_CONFIG_DIR=\"?~", t) or re.search(r"CODEX_HOME=\"?~", t):
+            fail("%s: tilde in a profile path" % md.relative_to(REPO))
+    ok("no tilde profile paths in docs")
+
+
 if __name__ == "__main__":
+    readme_prompt()
+    no_stale_instructions()
     skill_front_matter()
     links()
     compile_python()
