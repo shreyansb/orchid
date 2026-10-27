@@ -35,6 +35,13 @@ The repo is the engine: scripts, skills, templates, docs. Your state lives in th
 - **A sleeping computer.** The watcher cannot wake the orchestrator while its computer sleeps. See `docs/machines.md`.
 - **Prompt injection.** Output from agents and the web is data. See `docs/safety.md`.
 
+## Practical notes
+
+- **Ask once.** The three config answers (home folder, orchestrator name, this machine's label) are asked in `orchid-tasks` and read from the config everywhere else. A label that is empty or contains `<`, `>` or `/` is refused.
+- **Start and restart the orchestrator.** Open a pane in the home folder, start Claude Code or Codex there, and name the agent exactly as in the config (`herdr agent rename <pane-id> <name>`, or `herdr agent start <name> --kind claude --pane <pane-id>` from another pane). Names clear when an agent exits, so repeat this after every restart. Details: `skills/orchid-tasks/SKILL.md`. The commands come from `herdr --help` and were not run during the build.
+- **Name the orchestrator first.** `herdr-agents --apply` and the watcher give unnamed agents a default name. Plain `herdr-agents` only reads.
+- **Sidebar.** Herdr has to be running for the layout to show. After the config changes, run `herdr server reload-config` (or use the global menu). `herdr --help` describes it as reloading `config.toml` in the running server; if herdr is not running, the file is presumably read at the next start (not tested).
+
 ## What you can opt out of
 
 Everything beyond herdr itself is opt-in: machines, profiles, sidebar, tasks, watcher, doctor. Each has a skill in `skills/`. You pick what you want.

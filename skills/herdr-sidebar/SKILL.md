@@ -16,7 +16,7 @@ Shows one line per agent in herdr's sidebar: a state icon and the agent name. Be
 1. Dry run: `python3 <repo>/skills/herdr-sidebar/merge_sidebar.py` (add `--config <path>` if needed). It prints a diff and changes nothing.
 2. If it reports that the config already sets `sidebar.agents`, stop. It prints both versions. Merging is the person's decision; offer to explain the difference. Do not edit the file.
 3. If the diff looks right and the person says yes, run it again with `--apply`. It backs up the config first (`config.toml.orchid-bak-<time>`) and appends the block.
-4. Reload: herdr's global menu, or `herdr server reload-config`.
+4. Reload: herdr must be running. Use herdr's global menu or run `herdr server reload-config` (`herdr --help` describes it as reloading `config.toml` in the running server). If herdr is not running, the layout should appear at the next start (not tested).
 
 ## Verify
 `grep -n "sidebar.agents" ~/.config/herdr/config.toml` shows the block. The sidebar shows one line per agent after reload. If herdr reports a config error, restore the backup immediately.
