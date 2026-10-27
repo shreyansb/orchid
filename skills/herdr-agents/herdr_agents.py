@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Print one table of every herdr agent on this machine and all enabled saved machines.
 
-Each agent gets one name. Herdr clears a name when its agent exits, so names are saved in
-names.json (next to the orchid config), keyed by machine label and pane, and put back on the
-next run. Unnamed agents get "<space>-p<N>" as a default.
+Read-only by default: it lists agents and shows the names it WOULD give unnamed agents (marked
+with *), but renames nothing and writes nothing. Add --apply to rename.
 
-Flags: --local (this machine only), --json, --quiet (rename only, print warnings).
+With --apply, each unnamed agent gets a name. Herdr clears a name when its agent exits, so names
+are saved in names.json (next to the orchid config), keyed by machine label and pane, and put
+back on the next run. Unnamed agents get "<space>-p<N>" as a default. Name the orchestrator
+agent first, or it will get a default name too.
+
+Flags: --apply (rename and save names), --local (this machine only), --json,
+--quiet (print warnings only, no table).
 """
 import json
 import os
@@ -33,7 +38,7 @@ def default_name(space, pane):
     return "%s-p%s" % (slug[:28], pane.split(":p")[-1])
 
 
-def collect(label, machine, registry, errors):
+def collect(label, machine, registry, errors, apply):
     spaces = {w["workspace_id"]: w["label"]
               for w in herdr("workspace", "list", machine=machine)["result"]["workspaces"]}
     agents = herdr("agent", "list", machine=machine)["result"]["agents"]
@@ -51,6 +56,9 @@ def collect(label, machine, registry, errors):
             if want in used:
                 errors.append("%s %s: name %s is in use" % (label, pane, want))
                 name = "-"
+            elif not apply:
+                name = want + "*"  # proposed only; nothing was renamed
+                used.add(want)
             else:
                 try:
                     herdr("agent", "rename", pane, want, machine=machine, raw=True)
@@ -79,7 +87,11 @@ def saved_machines():
 
 
 def main(argv):
-    cfg = orchid_config.load()
+    state, message, cfg = orchid_config.status()
+    if state == "invalid":
+        print(message, file=sys.stderr)
+        return 2
+    apply = "--apply" in argv
     registry_path = orchid_config.state_dir() / "names.json"
     try:
         registry = json.loads(registry_path.read_text())
@@ -93,20 +105,21 @@ def main(argv):
     rows, errors = [], []
     for label, machine in targets:
         try:
-            rows += collect(label, machine, registry, errors)
+            rows += collect(label, machine, registry, errors, apply)
         except Exception as e:
             errors.append("%s: %s" % (label, e))
 
-    registry_path.parent.mkdir(parents=True, exist_ok=True)
-    registry_path.write_text(json.dumps(registry, indent=2, sort_keys=True))
+    if apply:
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_path.write_text(json.dumps(registry, indent=2, sort_keys=True))
 
     if "--quiet" in argv:
         for e in errors:
             print("WARNING  %s" % e, file=sys.stderr)
-        return
+        return 0
     if "--json" in argv:
-        print(json.dumps({"agents": rows, "errors": errors}, indent=2))
-        return
+        print(json.dumps({"agents": rows, "errors": errors, "applied": apply}, indent=2))
+        return 0
 
     cols = ["name", "machine", "space", "pane", "kind", "status", "cwd", "task"]
     w = {c: max([len(c)] + [len(r[c]) for r in rows]) for c in cols}
@@ -118,9 +131,11 @@ def main(argv):
     print("-+-".join("-" * w[c] for c in cols))
     for r in rows:
         print(line(r))
+    if any(r["name"].endswith("*") for r in rows):
+        print("\n* proposed name. Nothing was renamed. Run with --apply to set the names.")
     for e in errors:
         print("WARNING  %s" % e, file=sys.stderr)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    sys.exit(main(sys.argv[1:]) or 0)
