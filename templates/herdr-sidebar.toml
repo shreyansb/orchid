@@ -1,0 +1,5 @@
+# Orchid sidebar layout. One line per agent: state icon and agent name.
+# Agent names start with the space name, so the line already shows where the agent runs.
+# Added to ~/.config/herdr/config.toml by the herdr-sidebar skill, with a diff and a backup.
+[ui.sidebar.agents]
+rows = [["state_icon", "agent"]]

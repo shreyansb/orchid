@@ -1,0 +1,12 @@
+# Orchid config. Install as ~/.config/orchid/config (or set ORCHID_CONFIG).
+# Plain key=value lines. Nothing in orchid's code is hard-coded; these three values drive it.
+
+# Folder that holds your state: tasks, board, journal, profiles, spaces.
+home=~/orchid-home
+
+# herdr agent name of the orchestrator. The watcher wakes the agent with this name.
+orchestrator=orchid
+
+# Name of THIS machine. Other machines save this computer in herdr under the same label.
+# No "/" in the label.
+machine_label=<machine-label>
