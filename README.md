@@ -19,12 +19,12 @@ You get, if you want them:
 
 ## Paste this into your coding agent
 
-The prompt is pinned to release `v0.1.0`. To use another release, change the tag in the prompt. Use a tag or a full commit hash, not `main`.
+The prompt is pinned to release `v0.2.0`. To use another release, change the tag in the prompt. Use a tag or a full commit hash, not `main`.
 
 ```
-Set up orchid for me. Source: https://github.com/shreyansb/orchid, at tag or commit v0.1.0 only.
+Set up orchid for me. Source: https://github.com/shreyansb/orchid, at tag or commit v0.2.0 only.
 
-1. Clone the repo into a new folder, check out v0.1.0, and confirm `git rev-parse HEAD`.
+1. Clone the repo into a new folder, check out v0.2.0, and confirm `git rev-parse HEAD`.
 2. Before you run anything, read README.md, docs/safety.md and the four scripts that can
    write outside the clone: scripts/link-skill.sh, scripts/safe-write.sh,
    scripts/write-config.sh, scripts/init-home.sh. Tell me in a few lines what they do.
