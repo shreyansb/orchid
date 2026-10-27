@@ -75,6 +75,7 @@ say "label:   $LABEL"
 say "script:  $SCRIPT"
 say "python:  $PY"
 say "herdr:   $HERDR"
+say "path:    $PATHVAL"
 say "config:  $CONFIG"
 say "log:     $STATE/watcher.log"
 
