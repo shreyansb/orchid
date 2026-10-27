@@ -54,12 +54,14 @@ def check_tools():
 
 
 def check_config():
-    path = orchid_config.config_path()
-    if not path.exists():
-        add("WARN", "config", "%s not found (tasks and watcher need it)" % path)
+    state, message, cfg = orchid_config.status()
+    if state == "missing":
+        add("WARN", "config", message + " (tasks and watcher need it)")
         return None
-    cfg = orchid_config.load()
-    add("OK", "config", str(path))
+    if state == "invalid":
+        add("FAIL", "config", message)
+        return None
+    add("OK", "config", str(orchid_config.config_path()))
     home = cfg["home"]
     if not home.is_dir():
         add("FAIL", "home folder", "%s does not exist" % home)

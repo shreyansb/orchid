@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Background helper for orchid. Run it under launchd (see SKILL.md).
 
-1. Naming: subscribes to herdr's event stream and runs herdr_agents.py --local --quiet after
-   each agent detection, so every new agent on this machine gets a name.
+1. Naming: subscribes to herdr's event stream and runs herdr_agents.py --local --quiet --apply
+   after each agent detection, so every new agent on this machine gets a name.
 2. Wake-up: every POLL_SECONDS it lists agents on this machine and on every enabled saved
    machine. When an agent that owns an open task (<home>/tasks) stops working (idle, done, or
    blocked), sits in `unknown` for 30 s, or works with an unchanged screen for 10 min, it
@@ -65,7 +65,7 @@ def herdr_text(*args, machine=None):
 # --- naming ---------------------------------------------------------------
 
 def reconcile():
-    r = subprocess.run([sys.executable, "-I", AGENTS_SCRIPT, "--local", "--quiet"],
+    r = subprocess.run([sys.executable, "-I", AGENTS_SCRIPT, "--local", "--quiet", "--apply"],
                        capture_output=True, text=True, timeout=60)
     if r.stderr.strip():
         log(r.stderr.strip())
@@ -207,7 +207,12 @@ def poll_loop(cfg):
 
 
 def check(cfg):
-    """Print what the daemon would watch. Changes nothing."""
+    """Print what the daemon would watch. Changes nothing. Returns the exit code."""
+    state, message, _ = orchid_config.status()
+    print(message)
+    if state != "ok":
+        print("The watcher needs a valid config. See skills/orchid-tasks.")
+        return 1
     print("config:        %s" % orchid_config.config_path())
     print("home:          %s" % cfg["home"])
     print("orchestrator:  %s" % cfg["orchestrator"])
@@ -232,13 +237,16 @@ def check(cfg):
         print("  %s %s/%s: %s" % (tid, label, agent, state))
     orch = live.get(cfg["machine_label"])
     print("orchestrator agent running here: %s" % ("yes" if orch and cfg["orchestrator"] in orch else "no"))
+    return 0
 
 
 def main():
-    cfg = orchid_config.load()
+    state, message, cfg = orchid_config.status()
     if "--check" in sys.argv:
-        check(cfg)
-        return
+        sys.exit(check(cfg))
+    if state != "ok":
+        log("%s; not starting" % message)
+        sys.exit(2)
     threading.Thread(target=poll_loop, args=(cfg,), daemon=True).start()
     while True:
         try:

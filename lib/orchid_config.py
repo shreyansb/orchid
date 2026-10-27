@@ -9,9 +9,12 @@ Keys:
   machine_label  label of THIS machine, the same label other machines use for it
 """
 import os
+import re
 from pathlib import Path
 
 DEFAULTS = {"home": "~/orchid-home", "orchestrator": "orchid", "machine_label": "local"}
+AGENT_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")  # herdr's rule for agent names
+LABEL_FORBIDDEN = "<>/"
 
 
 def config_path():
@@ -36,9 +39,10 @@ def load(path=None):
     path = Path(path) if path else config_path()
     cfg = dict(DEFAULTS)
     try:
-        cfg.update({k: v for k, v in parse(path.read_text()).items() if v})
+        cfg.update(parse(path.read_text()))  # an empty value stays empty, so problems() can flag it
     except OSError:
         pass
+    cfg["home_text"] = cfg["home"]
     cfg["home"] = Path(cfg["home"]).expanduser()
     return cfg
 
@@ -46,3 +50,39 @@ def load(path=None):
 def state_dir():
     """Machine-local state (saved agent names, watcher log). Next to the config file."""
     return config_path().parent
+
+
+def problems(cfg):
+    """List what is wrong with a loaded config. Empty list means it is usable.
+
+    A label left as the template placeholder (`<machine-label>`), an empty label, or one with
+    "/" breaks task matching without any error, so it is rejected here.
+    """
+    out = []
+    if not cfg.get("home_text", str(cfg.get("home", ""))).strip():
+        out.append("home is empty")
+    label = cfg.get("machine_label", "")
+    if not label.strip():
+        out.append("machine_label is empty")
+    elif any(c in label for c in LABEL_FORBIDDEN):
+        out.append("machine_label %r must not contain any of: %s" % (label, " ".join(LABEL_FORBIDDEN)))
+    if not AGENT_NAME.fullmatch(cfg.get("orchestrator", "")):
+        out.append("orchestrator %r is not a valid herdr agent name (lowercase letters, digits, - and _; "
+                   "start with a letter; 32 characters at most)" % cfg.get("orchestrator", ""))
+    return out
+
+
+def status(path=None):
+    """(state, message, cfg). State is "ok", "missing" or "invalid".
+
+    The one place that decides what a missing or broken config means, so every tool says the
+    same thing. The message for "missing" always starts with "config not found".
+    """
+    path = Path(path) if path else config_path()
+    cfg = load(path)
+    if not path.exists():
+        return "missing", "config not found: %s" % path, cfg
+    bad = problems(cfg)
+    if bad:
+        return "invalid", "config invalid: %s (%s)" % ("; ".join(bad), path), cfg
+    return "ok", "config: %s" % path, cfg
